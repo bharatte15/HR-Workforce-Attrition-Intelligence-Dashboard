@@ -176,14 +176,7 @@ HTML(filename=html_path).write_pdf(pdf_path)
 
 ```
 
-Your professional project summary and portfolio-ready documentation are ready.
 
-Your PDF file is ready
-
-
-You can copy and paste the sections below directly into your GitHub **README.md** file for a professional presentation:
-
----
 
 # HR Workforce & Attrition Intelligence Dashboard
 
@@ -201,6 +194,17 @@ To build a robust analytics pipeline that identifies high-risk attrition factors
 2. **Data Warehousing (Oracle SQL):** Designed relational schemas and migrated datasets into an Oracle XE database for structured storage.
 3. **SQL Analysis:** Developed complex analytical queries to extract key performance indicators (KPIs) and departmental benchmarks.
 4. **Business Intelligence (Power BI):** Developed a multi-page interactive dashboard featuring dynamic slicers, DAX measures, and drill-through analysis.
+
+Dataset
+   ↓
+Google Colab (Cleaning & Feature Engineering)
+   ↓
+Oracle Database XE
+   ↓
+Oracle SQL Developer (SQL Analysis)
+   ↓
+Power BI Dashboard
+
 
 ## 🛠 Tools Used
 
