@@ -1,0 +1,202 @@
+// =====================================================================================
+// EMPLOYEE ATTRITION - DAX MEASURES
+// Model: Employees (employee_attrition_clean.csv)  <-  DimDate (dim_date.csv)
+// Active relationship  : DimDate[Date] 1 -> * Employees[Exit_Date]
+// Inactive relationship: DimDate[Date] 1 -> * Employees[Hire_Date]   (not used by these measures)
+// Create a blank table called _Measures (Home > Enter data) and add each measure to it.
+// =====================================================================================
+
+
+// ---------- 1. CORE COUNTS ----------------------------------------------------------
+// Denominator ignores the date table so a year/quarter slicer does not collapse it to leavers only.
+Total Employees =
+CALCULATE ( COUNTROWS ( Employees ), REMOVEFILTERS ( DimDate ) )
+
+Active Employees =
+CALCULATE ( COUNTROWS ( Employees ), Employees[Attrition_Flag] = 0, REMOVEFILTERS ( DimDate ) )
+
+// Leavers respects DimDate (it is related through Exit_Date), so it works on any time axis.
+Leavers =
+CALCULATE ( COUNTROWS ( Employees ), Employees[Attrition_Flag] = 1 )
+
+Voluntary Leavers =
+CALCULATE ( [Leavers], Employees[Attrition_Type] = "Voluntary" )
+
+Involuntary Leavers =
+CALCULATE ( [Leavers], Employees[Attrition_Type] = "Involuntary" )
+
+Voluntary Share =
+DIVIDE ( [Voluntary Leavers], [Leavers] )
+
+
+// ---------- 2. SEGMENT ATTRITION (use on role / department / age / tenure visuals) ----
+// Leavers / employees ever in the segment during the window. Cumulative, so larger than an annual rate.
+Cumulative Attrition % =
+DIVIDE ( [Leavers], [Total Employees] )
+
+Company Attrition % =
+CALCULATE ( [Cumulative Attrition %], ALL ( Employees ) )
+
+Attrition vs Company (pts) =
+[Cumulative Attrition %] - [Company Attrition %]
+
+Attrition Index =
+DIVIDE ( [Cumulative Attrition %], [Company Attrition %] ) * 100
+
+// Conditional-formatting helper: red if >5 pts above company average, green if >5 pts below
+Attrition Color =
+SWITCH (
+    TRUE (),
+    [Attrition vs Company (pts)] > 0.05, "#C00000",
+    [Attrition vs Company (pts)] < -0.05, "#548235",
+    "#7F7F7F"
+)
+
+
+// ---------- 3. PERIOD ATTRITION (use on year / quarter / month axes of DimDate) -------
+// Rate = leavers / average headcount, where average headcount = (start + end) / 2.
+Headcount Start =
+VAR d = MIN ( DimDate[Date] ) - 1
+RETURN
+    CALCULATE (
+        COUNTROWS (
+            FILTER (
+                Employees,
+                Employees[Hire_Date] <= d
+                    && ( ISBLANK ( Employees[Exit_Date] ) || Employees[Exit_Date] > d )
+            )
+        ),
+        REMOVEFILTERS ( DimDate )
+    )
+
+Headcount End =
+VAR d = MAX ( DimDate[Date] )
+RETURN
+    CALCULATE (
+        COUNTROWS (
+            FILTER (
+                Employees,
+                Employees[Hire_Date] <= d
+                    && ( ISBLANK ( Employees[Exit_Date] ) || Employees[Exit_Date] > d )
+            )
+        ),
+        REMOVEFILTERS ( DimDate )
+    )
+
+Average Headcount =
+DIVIDE ( [Headcount Start] + [Headcount End], 2 )
+
+Attrition Rate (Period) =
+DIVIDE ( [Leavers], [Average Headcount] )
+
+Annualised Quarterly Rate =
+[Attrition Rate (Period)] * 4
+
+// Average of the yearly rates, counting only years that have exits (2022-2025 in the sample)
+Avg Annual Attrition Rate =
+AVERAGEX (
+    FILTER ( VALUES ( DimDate[Year] ), [Leavers] > 0 ),
+    [Attrition Rate (Period)]
+)
+
+
+// ---------- 4. SEASONALITY ------------------------------------------------------------
+// 1.0 = an average month. Put DimDate[Month] (sorted by Month_Num) on the axis.
+Seasonality Index =
+VAR AllExits =
+    CALCULATE ( [Leavers], REMOVEFILTERS ( DimDate[Month], DimDate[Month_Num] ) )
+RETURN
+    DIVIDE ( [Leavers], AllExits / 12 )
+
+
+// ---------- 5. TENURE & PROFILE -------------------------------------------------------
+Avg Tenure Leavers (yrs) =
+CALCULATE ( AVERAGE ( Employees[Tenure_Years] ), Employees[Attrition_Flag] = 1 )
+
+Avg Tenure Active (yrs) =
+CALCULATE ( AVERAGE ( Employees[Tenure_Years] ), Employees[Attrition_Flag] = 0 )
+
+Avg Monthly Income Leavers =
+CALCULATE ( AVERAGE ( Employees[Monthly_Income] ), Employees[Attrition_Flag] = 1 )
+
+Avg Monthly Income Active =
+CALCULATE ( AVERAGE ( Employees[Monthly_Income] ), Employees[Attrition_Flag] = 0 )
+
+
+// ---------- 6. EXIT REASONS -----------------------------------------------------------
+Voluntary Reason % =
+DIVIDE (
+    CALCULATE ( [Leavers], Employees[Attrition_Type] = "Voluntary" ),
+    CALCULATE ( [Leavers], Employees[Attrition_Type] = "Voluntary", REMOVEFILTERS ( Employees[Exit_Reason] ) )
+)
+
+Top Voluntary Reason =
+VAR t =
+    SUMMARIZE (
+        FILTER ( Employees, Employees[Attrition_Type] = "Voluntary" ),
+        Employees[Exit_Reason],
+        "n", COUNTROWS ( Employees )
+    )
+RETURN
+    MAXX ( TOPN ( 1, t, [n], DESC ), Employees[Exit_Reason] )
+
+
+// ---------- 7. COST OF ATTRITION (what-if) --------------------------------------------
+// Create the parameter table first:  Modeling > New parameter > Numeric range
+//   Name "Replacement Cost %", min 0.2, max 1.0, increment 0.05, default 0.5, add slicer.
+// That generates the table 'Replacement Cost %' and the measure below (or create them by hand):
+//   Replacement Cost % = GENERATESERIES ( 0.2, 1, 0.05 )
+Replacement Cost % Value =
+SELECTEDVALUE ( 'Replacement Cost %'[Replacement Cost %], 0.5 )
+
+// ASSUMPTION: replacement cost = this % of annual salary (recruiting, onboarding, lost productivity).
+Replacement Cost (INR) =
+SUMX ( FILTER ( Employees, Employees[Attrition_Flag] = 1 ), Employees[Monthly_Income] * 12 )
+    * [Replacement Cost % Value]
+
+Replacement Cost (INR mn) =
+DIVIDE ( [Replacement Cost (INR)], 1000000 )
+
+Avg Annual Replacement Cost (INR mn) =
+DIVIDE (
+    [Replacement Cost (INR mn)],
+    CALCULATE ( DISTINCTCOUNT ( Employees[Exit_Year] ), Employees[Attrition_Flag] = 1 )
+)
+
+
+// ---------- 8. RISK MODEL OUTPUT (scores come from the Python pipeline) ----------------
+// Risk_Score is a relative ranking (0-1), NOT a calibrated probability.
+High Risk Employees =
+CALCULATE ( COUNTROWS ( Employees ), Employees[Risk_Band] = "High" )
+
+Avg Risk Score (Active) =
+CALCULATE ( AVERAGE ( Employees[Risk_Score] ), Employees[Attrition_Flag] = 0 )
+
+High Risk Annual Salary Exposure (INR mn) =
+DIVIDE (
+    SUMX ( FILTER ( Employees, Employees[Risk_Band] = "High" ), Employees[Monthly_Income] * 12 ),
+    1000000
+)
+
+High Risk Replacement Exposure (INR mn) =
+[High Risk Annual Salary Exposure (INR mn)] * [Replacement Cost % Value]
+
+
+// ---------- 9. STORYTELLING TEXT (smart-narrative style cards) ------------------------
+Insight - Overtime =
+"Overtime staff leave at "
+    & FORMAT ( CALCULATE ( [Cumulative Attrition %], Employees[Overtime] = "Yes" ), "0.0%" )
+    & " vs "
+    & FORMAT ( CALCULATE ( [Cumulative Attrition %], Employees[Overtime] = "No" ), "0.0%" )
+    & " for everyone else."
+
+Insight - Satisfaction =
+"Satisfaction score 1 leaves at "
+    & FORMAT ( CALCULATE ( [Cumulative Attrition %], Employees[Job_Satisfaction] = 1 ), "0.0%" )
+    & " vs "
+    & FORMAT ( CALCULATE ( [Cumulative Attrition %], Employees[Job_Satisfaction] = 4 ), "0.0%" )
+    & " for score 4."
+
+Dashboard Subtitle =
+"Window " & FORMAT ( MIN ( Employees[Exit_Date] ), "mmm yyyy" ) & " - " & FORMAT ( MAX ( Employees[Exit_Date] ), "mmm yyyy" )
+    & "  |  " & FORMAT ( [Leavers], "#,##0" ) & " leavers of " & FORMAT ( [Total Employees], "#,##0" ) & " employees"

@@ -1,0 +1,26 @@
+{
+  "name": "Attrition Navy-Orange",
+  "dataColors": ["#1F3864", "#C55A11", "#7030A0", "#2F5597", "#548235", "#BF8F00", "#C00000", "#7F7F7F"],
+  "background": "#FFFFFF",
+  "foreground": "#262626",
+  "tableAccent": "#1F3864",
+  "good": "#548235",
+  "neutral": "#BF8F00",
+  "bad": "#C00000",
+  "maximum": "#C00000",
+  "center": "#FFEB84",
+  "minimum": "#63BE7B",
+  "textClasses": {
+    "title":   { "fontFace": "Segoe UI Semibold", "fontSize": 12, "color": "#1F3864" },
+    "label":   { "fontFace": "Segoe UI", "fontSize": 10, "color": "#404040" },
+    "callout": { "fontFace": "Segoe UI Semibold", "fontSize": 28, "color": "#1F3864" },
+    "header":  { "fontFace": "Segoe UI Semibold", "fontSize": 12, "color": "#1F3864" }
+  },
+  "visualStyles": {
+    "*": { "*": {
+      "title": [{ "show": true, "fontColor": { "solid": { "color": "#1F3864" } }, "fontSize": 12, "bold": true }],
+      "border": [{ "show": false }],
+      "background": [{ "show": true, "color": { "solid": { "color": "#FFFFFF" } }, "transparency": 0 }]
+    } }
+  }
+}
